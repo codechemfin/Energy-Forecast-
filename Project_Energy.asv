@@ -1,0 +1,200 @@
+%Modelación y pronóstico de los precios spot en el mercado eléctrico
+%Colombiano con 1 capa oculta de base radial
+
+clc
+clear all
+rng('default')
+format long
+Datos=xlsread('DataSet.xls');
+Datos = Datos(1600:end,:); 
+
+plot(Datos)
+figure
+
+[R,P] = corr(Datos,'Type','Pearson'); % Matríz de Coorrelación y valores-P
+hR = heatmap(R)%Mapa de Calor de las Correlaciones
+figure
+hP = heatmap(P)%Mapa de Calor de los valores-P
+figure 
+%Funciones de Entrenamiento
+% X = ["traingd" "traingdm" "traingdx" "trainrp" "trainscg" "traincgf" "traincgb" ...
+%     "trainoss" "trainbfg" "trainlm" "trainbr"];
+
+[i,j]=size(Datos);
+p=Datos(:,1:j-1);          %extraer las variables de entrada
+t=Datos(:,j);              %extrae la variable de salida
+
+% % TRANSPONER MATRICES
+% % en p y t, los datos estan en columnas, variables en filas
+p=p';
+t=t';
+plot(Datos(:,end-1))
+legend('Precios spot de la energía eléctrica')
+figure 
+
+plot(Datos(:,1))
+legend('Volumen embalsado en Kwh')
+figure 
+
+plot(Datos(:,2))
+legend('Caudal en Kwh')
+figure 
+
+plot(Datos(:,3))
+legend('Demanda en Kwh')
+figure 
+
+plot(Datos(:,4))
+legend('Precio del carbón en US$/Ton')
+figure 
+
+plot(Datos(:,5))
+legend('Precio del gas en US$/BTU')
+figure 
+
+plot(Datos(:,6))
+legend('Precio del petróleo en US$/Barril')
+figure 
+
+plot(Datos(:,7))
+legend('Tasa representativa del mercado en Cop$/US$')
+figure 
+
+tic    
+       
+net = newrb(p,t,1.5,5,i,200);               
+net.trainFcn="traingd"; 
+% net.trainParam.showWindow = 0;
+net = configure(net,p,t);
+net.divideFcn='dividerand';       
+net=init(net);
+%[net,tr]=train(net,p,t,'useParallel','no','useGPU','yes');  
+[net,tr]=train(net,p,t);  
+                
+% Mostrar tiempo de commputo
+toc
+
+tic
+             
+[ptrain,pval,ptest]=divideind(p,tr.trainInd,tr.valInd,tr.testInd);         
+[ttrain,tval,ttest]=divideind(t,tr.trainInd,tr.valInd,tr.testInd);                
+a=sim(net,p);% Simulación todos los datos                
+b=sim(net,ptest); % Simulación datos de test
+c=sim(net,pval); % Simulación datos de validación
+d=sim(net,ptrain); % Simulación datos de entrenamiento              
+    
+toc
+plot(t)%Todos los datos reales
+hold on
+plot(a)%Todos los datos simulados
+legend('Datos reales','Datos simulados')
+figure 
+
+plot(ttest)%Datos de test reales
+hold on
+plot(b) %Datos de test simulados
+legend('Datos test reales','Datos test simulados')
+figure
+ 
+plot(tval)%Datos de validación reales 
+hold on
+plot(c) %Datos de validación simulados 
+legend('Datos validación reales','Datos validación simulados')
+figure
+
+plot(ttrain)%Datos de entrenamiento reales 
+hold on
+plot(d) %Datos de entrenamiento Simulados
+legend('Datos entrenamiento reales','Datos entrenamiento simulados')
+figure
+ 
+%Errores
+errordatos=t-a;%Error entre datos reales Vs Simulados
+RMSEdatos=sqrt(mse(t,a))
+ 
+errortest =ttest-b; %Error entre datos de test reales Vs Simulados
+RMSEtest=sqrt(mse(ttest,b))
+
+errorval=tval-c;%Error entre datos de validación reales Vs Simulados
+RMSEval=sqrt(mse(tval,c))
+
+errortrain=ttrain-d;%Error entre datos de entrenamiento reales Vs Simulados
+RMSEtrain=sqrt(mse(ttrain,d))
+
+%Pruebas PACF
+parcorr(errordatos)
+legend('PACF Error Datos')
+figure
+
+parcorr(errortest)
+legend('PACF Error Test')
+figure
+
+parcorr(errorval)
+legend('PACF Error Validación')
+figure
+
+parcorr(errortrain)
+legend('PACF Error Entrenamiento')
+figure
+ 
+%Histogramas
+ 
+histfit(errordatos)
+legend('Error Datos')
+figure
+
+histfit(errortest)
+legend('Error Test')
+figure
+
+histfit(errorval)
+legend('Error Validación')
+figure
+
+histfit(errortrain)
+legend('Error Entrenamiento')
+figure  
+
+%Pruebas de normalidad
+
+Ndatos=jbtest(errordatos)
+Ntest=jbtest(errortest)
+Nval=jbtest(errorval)
+Ntrain=jbtest(errortrain)
+
+[H,pvalor,Q,CV]=lbqtest(errortest,'lags',[10 15 20],'Alpha',0.05)%Ljung-Box Q-Test
+
+%Datos para validación cruzada
+
+VAL=p(:,58);% Datos de la fila (Poner cualquier valor que no supere el número de filas de la base de datos original)
+RVAL=t(58);
+ 
+%Pesos de las matrices y Bias
+
+IW1=net.IW{1,1};			%pesos capa entrada – capa oculta 0 a 1
+LW2=net.LW{2,1};			%pesos capa oculta 1 a la 2 a capa de salida
+ 
+B1=net.b{1,1};			    %pesos del Bias a capa oculta 1
+B2=net.b{2,1};              %pesos del Bias a capa salida 
+   
+[H,K]=size(IW1);
+
+for h=1:H
+    for k=1:K
+        D(h,k)=(IW1(h,k) - VAL(k)).^2; %Diferencia de los pesos y los datos de entrada
+        DE(h)=sqrt(sum(D(h,:)));% Distancia Euclidea
+        Net1(h)=DE(h)*B1(h);% Neto 1
+    end
+end
+ 
+for h=1:H
+    A(h)=exp(-Net1(h)^2);%Función de activación Gaussiana
+end
+  
+Net2=dot(LW2,A)+B2;% Neto 2; Función lineal (Debe ser muy aproximada a RVAL) 
+
+Sol=[RVAL Net2] %Valor real Vs. Valor estimado
+view(net)
+ 
+ 
