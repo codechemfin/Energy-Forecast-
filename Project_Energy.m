@@ -1,5 +1,5 @@
-%Modelación y pronóstico de los precios spot en el mercado eléctrico
-%Colombiano con 1 capa oculta de base radial
+%Forescasting of  prices stock in energy market -  colombian case
+%radial basis - One hidden layer
 
 clc
 clear all
