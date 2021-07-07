@@ -1,3 +1,4 @@
+%% Pablo Andres Jarava Guerra
 %Forescasting of  prices stock in energy market -  colombian case
 %radial basis - One hidden layer
 
